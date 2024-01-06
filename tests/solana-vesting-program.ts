@@ -12,7 +12,6 @@ import {
 import { assert, expect } from "chai"
 
 describe("solana-vesting-program", () => {
-    // Configure the client to use the local cluster.
     const provider = AnchorProvider.env()
     const connection = provider.connection
 
@@ -21,8 +20,14 @@ describe("solana-vesting-program", () => {
     const program =
         workspace.SolanaVestingProgram as Program<SolanaVestingProgram>
 
-    const bob = Keypair.generate()
+    const satoshi = Keypair.generate()
+    const vitalik = Keypair.generate()
+
+
     const alice = Keypair.generate()
+    const alicia = Keypair.generate()
+    const bob = Keypair.generate()
+    const marley = Keypair.generate()
 
 
     const getVault = () => {
@@ -32,81 +37,73 @@ describe("solana-vesting-program", () => {
         )[0]
     }
 
-    const getLocker = (signer: PublicKey) => {
+    const getLocking = (reciever: PublicKey, mint: PublicKey) => {
         return PublicKey.findProgramAddressSync(
-            [Buffer.from("locker"), signer.toBuffer()],
+            [Buffer.from("locking"), reciever.toBuffer(), mint.toBuffer()],
             program.programId
         )[0]
     }
 
-    const getTimedLock = (
-        signer: PublicKey,
-        mint: PublicKey,
-        lock_id: number
-    ) => {
-        return PublicKey.findProgramAddressSync(
-            [
-                Buffer.from("timed_lock"),
-                signer.toBuffer(),
-                mint.toBuffer(),
-                new BN(lock_id).toBuffer(),
-            ],
-            program.programId
-        )[0]
+
+    const mintBtc = async (receiver: PublicKey, amount: number) => {
+        const { address } = await getOrCreateAssociatedTokenAccount(connection, satoshi, btcMint, receiver)
+        await mintTo(connection, satoshi, btcMint, address, satoshi, amount)
     }
+
+    const mintEth = async (receiver: PublicKey, amount: number) => {
+        const { address } = await getOrCreateAssociatedTokenAccount(connection, vitalik, ethMint, receiver)
+        await mintTo(connection, vitalik, ethMint, address, vitalik, amount)
+    }
+
+
+    const getBtcAddress = async (receiver: PublicKey, allowOwnerOffCurve?: boolean) => {
+        const address = await getAssociatedTokenAddress(btcMint, receiver, allowOwnerOffCurve)
+        return address
+    }
+
+    const getEthAddress = async (receiver: PublicKey, allowOwnerOffCurve?: boolean) => {
+        const address = await getAssociatedTokenAddress(ethMint, receiver, allowOwnerOffCurve)
+        return address
+    }
+
+    const getAirdrop = async (receiver: PublicKey) => {
+        const signature = await connection.requestAirdrop(
+            receiver,
+            3 * LAMPORTS_PER_SOL
+        )
+
+        const { blockhash, lastValidBlockHeight } =
+            await connection.getLatestBlockhash()
+
+        await connection.confirmTransaction({
+            blockhash,
+            lastValidBlockHeight,
+            signature,
+        })
+    }
+
 
     const vault = getVault()
-    const bobLocker = getLocker(bob.publicKey)
-    const aliceLocker = getLocker(alice.publicKey)
-
-
-    let vaultBtcAddress: PublicKey
-    let vaultEthAddress: PublicKey
-    let bobBtcAddress: PublicKey
-    let bobEthAddress: PublicKey
-    let aliceBtcAddress: PublicKey
-    let aliceEthAddress: PublicKey
 
     let btcMint: PublicKey
     let ethMint: PublicKey
 
     before(async () => {
-        const signature = await connection.requestAirdrop(
-            bob.publicKey,
-            3 * LAMPORTS_PER_SOL
-        )
-
-        const { blockhash, lastValidBlockHeight } =
-            await connection.getLatestBlockhash()
-
-        await connection.confirmTransaction({
-            blockhash,
-            lastValidBlockHeight,
-            signature,
-        })
-    })
-
-    before(async () => {
-        const signature = await connection.requestAirdrop(
-            alice.publicKey,
-            3 * LAMPORTS_PER_SOL
-        )
-
-        const { blockhash, lastValidBlockHeight } =
-            await connection.getLatestBlockhash()
-
-        await connection.confirmTransaction({
-            blockhash,
-            lastValidBlockHeight,
-            signature,
-        })
+        await Promise.all([
+            getAirdrop(satoshi.publicKey),
+            getAirdrop(vitalik.publicKey),
+            getAirdrop(alice.publicKey),
+            getAirdrop(alicia.publicKey),
+            getAirdrop(bob.publicKey),
+            getAirdrop(marley.publicKey),
+        ])
     })
 
     before(async () => {
         btcMint = await createMint(
             connection,
-            bob,
-            bob.publicKey,
+            satoshi,
+            satoshi.publicKey,
             null,
             9,
             undefined,
@@ -116,78 +113,39 @@ describe("solana-vesting-program", () => {
 
         ethMint = await createMint(
             connection,
-            bob,
-            bob.publicKey,
+            vitalik,
+            vitalik.publicKey,
             null,
             9,
             undefined,
             {},
             TOKEN_PROGRAM_ID
         )
+    })
 
-
-
-        vaultBtcAddress = await getAssociatedTokenAddress(btcMint, vault, true)
-        vaultEthAddress = await getAssociatedTokenAddress(ethMint, vault, true)
-
-
-        bobBtcAddress = (
-            await getOrCreateAssociatedTokenAccount(
-                connection,
-                bob,
-                btcMint,
-                bob.publicKey
-            )
-        ).address
-
-        bobEthAddress = (
-            await getOrCreateAssociatedTokenAccount(
-                connection,
-                bob,
-                ethMint,
-                bob.publicKey
-            )
-        ).address
-
-        aliceBtcAddress = (
-            await getOrCreateAssociatedTokenAccount(
-                connection,
-                bob,
-                btcMint,
-                bob.publicKey
-            )
-        ).address
-
-        aliceEthAddress = (
-            await getOrCreateAssociatedTokenAccount(
-                connection,
-                bob,
-                ethMint,
-                bob.publicKey
-            )
-        ).address
-
-
-        await mintTo(connection, bob, btcMint, bobBtcAddress, bob, 21_000_000)
-
-        await mintTo(connection, bob, ethMint, bobEthAddress, bob, 100_000_000)
+    before(async () => {
+        await Promise.all([
+            mintBtc(bob.publicKey, 21),
+            mintEth(alice.publicKey, 100),
+        ])
     })
 
     it("Can lock tokens!", async () => {
-        const amount = new BN(5_000_000)
-        const deadline = new BN(Math.floor(Date.now() / 1000) - 5) // 5 secs before now
-        const lockId = 0
+        const amount = new BN(5)
+        const startDate = new BN(Math.floor(Date.now() / 1000) - 5) // 5 secs before now
+        const endDate = new BN(Math.floor(Date.now() / 1000) - 3) // 3 secs before now
 
-        const timedLock = getTimedLock(bob.publicKey, btcMint, lockId)
+        const locking = getLocking(marley.publicKey, btcMint)
+        const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
+        const bobAta = await getAssociatedTokenAddress(btcMint, bob.publicKey, false)
 
         await program.methods
-            .lock(amount, deadline)
+            .lock(marley.publicKey, amount, startDate, endDate)
             .accounts({
                 vault,
-                locker: bobLocker,
-                timedLock,
-                tokenAccountOfVault: vaultBtcAddress,
-                tokenAccountOfSigner: bobBtcAddress,
+                locking,
+                vaultAta,
+                signerAta: bobAta,
                 signer: bob.publicKey,
                 mint: btcMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
@@ -195,34 +153,36 @@ describe("solana-vesting-program", () => {
             .signers([bob])
             .rpc()
 
-        const account = await program.account.timedLock.fetch(timedLock)
+        const account = await program.account.locking.fetch(locking)
 
-        assert(account.deadline.eq(deadline))
-        assert(account.id === 0)
-        assert(account.locker.equals(bob.publicKey))
+        assert(account.amount.eq(amount))
+        assert(account.amountUnlocked.eq(new BN(0)))
+        assert(account.startDate.eq( startDate))
+        assert(account.endDate.eq(endDate))
         assert(account.mint.equals(btcMint))
-        assert(account.tokenAmount.eq(amount))
+        assert(account.reciever.equals(marley.publicKey))
 
-        const bobRemainingBalance = (await connection.getTokenAccountBalance(bobBtcAddress)).value.amount
-        const vaultNewBalance = (await connection.getTokenAccountBalance(vaultBtcAddress)).value.amount
+        const bobRemainingBalance = (await connection.getTokenAccountBalance(bobAta)).value.amount
+        const vaultNewBalance = (await connection.getTokenAccountBalance(vaultAta)).value.amount
 
-        assert(bobRemainingBalance === String(21_000_000 - 5_000_000))
-        assert(vaultNewBalance === String(5_000_000))
+        assert(bobRemainingBalance === String(16))
+        assert(vaultNewBalance === String(5))
     })
 
     it("Can unlock tokens!", async () => {
-        const lockId = 0
-
-        const timedLock = getTimedLock(bob.publicKey, btcMint, lockId)
+        const locking = getLocking(marley.publicKey, btcMint)
+        const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
+        const marleyAta = await getAssociatedTokenAddress(btcMint, marley.publicKey, false)
+        const bobAta = await getAssociatedTokenAddress(btcMint, bob.publicKey, false)
 
         await program.methods
-            .unlock(lockId)
+            .unlock()
             .accounts({
                 vault,
-                locker: bobLocker,
-                timedLock,
-                tokenAccountOfVault: vaultBtcAddress,
-                tokenAccountOfSigner: bobBtcAddress,
+                locking,
+                vaultAta,
+                recieverAta: marleyAta,
+                reciever: marley.publicKey,
                 signer: bob.publicKey,
                 mint: btcMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
@@ -230,15 +190,19 @@ describe("solana-vesting-program", () => {
             .signers([bob])
             .rpc()
 
-        // timedLock account is closed
-        // const account = await program.account.timedLock.fetch(timedLock)
+
+        const account = await program.account.locking.fetch(locking)
+
+        assert(account.amountUnlocked.eq(new BN(5)))
 
 
 
-        const bobRemainingBalance = (await connection.getTokenAccountBalance(bobBtcAddress)).value.amount
-        const vaultNewBalance = (await connection.getTokenAccountBalance(vaultBtcAddress)).value.amount
+        const bobRemainingBalance = (await connection.getTokenAccountBalance(bobAta)).value.amount
+        const marleyNewBalance = (await connection.getTokenAccountBalance(marleyAta)).value.amount
+        const vaultNewBalance = (await connection.getTokenAccountBalance(vaultAta)).value.amount
 
-        assert(bobRemainingBalance === String(21_000_000))
+        assert(bobRemainingBalance === String(16))
+        assert(marleyNewBalance === String(5))
         assert(vaultNewBalance === String(0))
     })
 })
