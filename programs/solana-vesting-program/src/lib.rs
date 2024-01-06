@@ -12,78 +12,93 @@ pub mod solana_vesting_program {
 
     use super::*;
 
-    pub fn lock(ctx: Context<Lock>, token_amount: u64, deadline: i64) -> Result<()> {
-        let locker = &mut ctx.accounts.locker;
-        let timed_lock = &mut ctx.accounts.timed_lock;
-        let signer_pubkey = ctx.accounts.signer.key();
-        let mint = ctx.accounts.mint.key();
+    pub fn lock(
+        ctx: Context<Lock>,
+        reciever: Pubkey,
+        amount: u64,
+        start_date: u64,
+        end_date: u64,
+    ) -> Result<()> {
+        let locking = &mut ctx.accounts.locking;
+        let vault = &ctx.accounts.vault;
+        let mint = &ctx.accounts.mint;
+        let signer = &ctx.accounts.signer;
+        let vault_ata = &ctx.accounts.vault_ata;
+        let signer_ata = &ctx.accounts.signer_ata;
+        let token_program = &ctx.accounts.token_program;
 
-        if locker.address == Pubkey::default() && locker.counter == 0 {
-            locker.address = signer_pubkey;
-        } else {
-            require!(locker.address == signer_pubkey, CustomError::DeadlineIsNotOver);
-        }
-
-        require!(ctx.accounts.token_account_of_vault.owner == ctx.accounts.vault.key(), CustomError::DeadlineIsNotOver);
-
-        require!(ctx.accounts.token_account_of_vault.mint == ctx.accounts.mint.key(), CustomError::DeadlineIsNotOver);
-        
-        
-        let cpi_program = ctx.accounts.token_program.to_account_info();
+        require!(
+            vault_ata.owner == vault.key(),
+            CustomError::MistakenVaultAtaOwner
+        );
+        require!(
+            vault_ata.mint == mint.key(),
+            CustomError::MistakenVaultAtaMint
+        );
+        require!(end_date > start_date, CustomError::EndBeforeStart);
 
         let transfer = Transfer {
-            from: ctx.accounts.token_account_of_signer.to_account_info(),
-            to: ctx.accounts.token_account_of_vault.to_account_info(),
-            authority: ctx.accounts.signer.to_account_info(),
+            from: signer_ata.to_account_info(),
+            to: vault_ata.to_account_info(),
+            authority: signer.to_account_info(),
         };
+        let token_transfer_context = CpiContext::new(token_program.to_account_info(), transfer);
+        token::transfer(token_transfer_context, amount)?;
 
-        let token_transfer_context = CpiContext::new(cpi_program, transfer);
-
-        token::transfer(token_transfer_context, token_amount)?;
-
-    
-        
-        timed_lock.id = locker.counter;
-        timed_lock.locker = signer_pubkey;
-        timed_lock.mint = mint;
-        timed_lock.deadline = deadline;
-        timed_lock.token_amount = token_amount;
-
-        locker.counter += 1;
+        locking.mint = mint.key();
+        locking.reciever = reciever;
+        locking.amount = amount;
+        locking.amount_unlocked = 0;
+        locking.start_date = start_date;
+        locking.end_date = end_date;
 
         Ok(())
     }
 
-    pub fn unlock(ctx: Context<Unlock>, _lock_id: u8) -> Result<()> {
-        
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-
-        let timed_lock = &mut ctx.accounts.timed_lock;
+    pub fn unlock(ctx: Context<Unlock>) -> Result<()> {
+        let locking = &mut ctx.accounts.locking;
+        let vault = &ctx.accounts.vault;
+        let mint = &ctx.accounts.mint;
+        let reciever = &ctx.accounts.reciever;
+        let vault_ata = &ctx.accounts.vault_ata;
+        let reciever_ata = &ctx.accounts.reciever_ata;
+        let token_program = &ctx.accounts.token_program;
 
         require!(
-            timed_lock.deadline < Clock::get().unwrap().unix_timestamp,
-            CustomError::DeadlineIsNotOver
+            reciever_ata.owner == reciever.key(),
+            CustomError::MistakenRecieverAtaOwner
+        );
+        require!(
+            reciever_ata.mint == mint.key(),
+            CustomError::MistakenRecieverAtaMint
         );
 
-        let seeds = &[b"vault".as_ref(), &[ctx.bumps.vault]];
 
-        let signer = &[&seeds[..]];
+        let now: u64 = Clock::get().unwrap().unix_timestamp.try_into().unwrap();
 
+        require!(now > locking.start_date, CustomError::CliffPeriodNotPassed);
 
-        let transfer = Transfer {
-            from: ctx.accounts.token_account_of_vault.to_account_info(),
-            to: ctx.accounts.token_account_of_signer.to_account_info(),
-            authority: ctx.accounts.vault.to_account_info(),
+        let passed_seconds = now - locking.start_date;
+        let total_seconds = locking.end_date - locking.start_date;
+
+        let entitled_amount = if now >= locking.end_date {
+            locking.amount - locking.amount_unlocked
+        } else {
+            locking.amount * passed_seconds / total_seconds - locking.amount_unlocked
         };
-        
 
-        let token_transfer_context = CpiContext::new_with_signer(cpi_program, transfer, signer);
+        let seeds = [b"vault".as_ref(), &[ctx.bumps.vault]];
+        let signer = &[&seeds[..]];
+        let transfer = Transfer {
+            from: vault_ata.to_account_info(),
+            to: reciever_ata.to_account_info(),
+            authority: vault.to_account_info(),
+        };
+        let token_transfer_context =
+            CpiContext::new_with_signer(token_program.to_account_info(), transfer, signer);
+        token::transfer(token_transfer_context, entitled_amount)?;
 
-        
-
-        token::transfer(token_transfer_context, timed_lock.token_amount)?;
-
-
+        locking.amount_unlocked += entitled_amount;
 
         Ok(())
     }
@@ -91,7 +106,7 @@ pub mod solana_vesting_program {
 
 #[derive(Accounts)]
 #[instruction(
-    token_amount: u64,
+    reciever: Pubkey,
 )]
 pub struct Lock<'info> {
     #[account(
@@ -105,40 +120,27 @@ pub struct Lock<'info> {
 
     #[account(
         init_if_needed,
-        seeds=[b"locker", signer.key().as_ref()],
-        bump,
+        associated_token::mint = mint, 
+        associated_token::authority = vault,
         payer = signer, 
-        space = Locker::INIT_SPACE + 8,
-        // constraint = locker.address == signer.key()
     )]
-    pub locker: Account<'info, Locker>,
+    pub vault_ata: Account<'info, TokenAccount>,
 
     #[account(
         init,
-        seeds=[b"timed_lock", signer.key().as_ref(), mint.key().as_ref(), &[locker.counter]],
+        seeds=[b"locking", reciever.as_ref(), mint.key().as_ref()],
         bump,
         payer = signer, 
-        space = TimedLock::INIT_SPACE + 8,
+        space = Locking::INIT_SPACE + 8,
     )]
-    pub timed_lock: Account<'info, TimedLock>,
-
-    #[account(
-        init_if_needed,
-        associated_token::mint = mint, 
-        associated_token::authority = vault,
-        // constraint = token_account_of_vault.owner.key() == vault.key(),
-        // constraint = token_account_of_vault.mint == mint.key(),
-        payer = signer, 
-    )]
-    pub token_account_of_vault: Account<'info, TokenAccount>,
+    pub locking: Account<'info, Locking>,
 
     #[account(
         mut,
-        constraint = token_account_of_signer.owner.key() == signer.key(),
-        constraint = token_account_of_signer.amount >= token_amount, 
-        constraint = token_account_of_signer.mint == mint.key(),
+        constraint = signer_ata.owner.key() == signer.key(),
+        constraint = signer_ata.mint == mint.key(),
     )]
-    pub token_account_of_signer: Account<'info, TokenAccount>,
+    pub signer_ata: Account<'info, TokenAccount>,
 
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -150,9 +152,6 @@ pub struct Lock<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(
-    _lock_id: u8
-)]
 pub struct Unlock<'info> {
     #[account(
         mut,
@@ -163,39 +162,30 @@ pub struct Unlock<'info> {
 
     #[account(
         mut,
-        seeds=[b"locker", signer.key().as_ref()],
-        bump,
-        constraint = locker.address.key() == signer.key(),
+        constraint = vault_ata.owner == vault.key(),
+        constraint = vault_ata.mint == mint.key(),
     )]
-    pub locker: Account<'info, Locker>,
-
-    #[account(
-        mut,
-        seeds=[b"timed_lock", signer.key().as_ref(), mint.key().as_ref(), &[_lock_id]],
-        bump,
-        constraint = timed_lock.id == _lock_id,
-        constraint = timed_lock.locker.key() == signer.key(),
-        constraint = timed_lock.mint == mint.key(),
-        close = signer,
-    )]
-    pub timed_lock: Account<'info, TimedLock>,
-
-    #[account(
-        mut,
-        constraint = token_account_of_vault.owner.key() == vault.key(),
-        constraint = token_account_of_vault.mint == mint.key(),
-    )]
-    pub token_account_of_vault: Account<'info, TokenAccount>,
+    pub vault_ata: Account<'info, TokenAccount>,
 
     #[account(
         init_if_needed,
         associated_token::mint = mint, 
-        associated_token::authority = signer,
-        constraint = token_account_of_signer.owner.key() == signer.key(),
-        constraint = token_account_of_signer.mint == mint.key(),
-        payer = signer, 
+        associated_token::authority = reciever,
+        payer = signer,
     )]
-    pub token_account_of_signer: Account<'info, TokenAccount>,
+    pub reciever_ata: Account<'info, TokenAccount>,
+
+    /// CHECK: Just a public key of a Solana account.
+    pub reciever: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds=[b"locking", reciever.key().as_ref(), mint.key().as_ref()],
+        bump,
+        constraint = locking.reciever.key() == reciever.key(),
+        constraint = locking.mint == mint.key(),
+    )]
+    pub locking: Account<'info, Locking>,
 
     #[account(mut)]
     pub signer: Signer<'info>,
@@ -206,29 +196,33 @@ pub struct Unlock<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[error_code]
-pub enum CustomError {
-    #[msg("Deadline is not over.")]
-    DeadlineIsNotOver,
-}
-
 #[derive(InitSpace)]
 #[account]
 pub struct Vault {}
 
 #[derive(InitSpace)]
 #[account]
-pub struct TimedLock {
-    id: u8,
-    locker: Pubkey,
-    mint: Pubkey,
-    deadline: i64,
-    token_amount: u64,
+pub struct Locking {
+    mint: Pubkey,         // mint address of tokens locked
+    reciever: Pubkey,     // reciever of locked tokens
+    amount: u64,          // amount of tokens locked
+    amount_unlocked: u64, // amount of tokens already unlocked
+    start_date: u64,      // starting date as unix timestamp in seconds
+    end_date: u64,        // ending date as unix timestamp in seconds
 }
 
-#[derive(InitSpace)]
-#[account]
-pub struct Locker {
-    address: Pubkey,
-    counter: u8,
+#[error_code]
+pub enum CustomError {
+    #[msg("Ending date is before start date.")]
+    EndBeforeStart,
+    #[msg("Vault ATA owner is mistaken.")]
+    MistakenVaultAtaOwner,
+    #[msg("Vault ATA mint is mistaken.")]
+    MistakenVaultAtaMint,
+    #[msg("Reciever ATA owner is mistaken.")]
+    MistakenRecieverAtaOwner,
+    #[msg("Reciever ATA mint is mistaken.")]
+    MistakenRecieverAtaMint,
+    #[msg("Cliff period is not passed.")]
+    CliffPeriodNotPassed,
 }
