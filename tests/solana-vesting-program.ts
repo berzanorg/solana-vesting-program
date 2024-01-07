@@ -200,7 +200,7 @@ describe("solana-vesting-program", () => {
         }
     })
 
-    it("Can't lock tokens when ending vault PDA ATA is mistaken!", async () => {
+    it("Can't lock tokens when vault PDA ATA is mistaken!", async () => {
         const amount = new BN(1_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
         const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
@@ -237,7 +237,7 @@ describe("solana-vesting-program", () => {
         } catch {}
     })
 
-    it("Can't lock tokens when both vault PDA & vault PDA ATA!", async () => {
+    it("Can't lock tokens when both vault PDA & vault PDA ATA is mistaken!", async () => {
         const amount = new BN(1_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
         const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
@@ -275,6 +275,43 @@ describe("solana-vesting-program", () => {
             assert.equal(
                 error.error.errorMessage,
                 "A seeds constraint was violated"
+            )
+        }
+    })
+
+    it("Can't lock tokens when balance is not enough!", async () => {
+        const amount = new BN(999_000_000_000_000)
+        const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+
+        const locking = getLocking(marley.publicKey, btcMint)
+        const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
+        const bobAta = await getAssociatedTokenAddress(
+            btcMint,
+            bob.publicKey,
+            false
+        )
+
+        try {
+            await program.methods
+                .lock(marley.publicKey, amount, startDate, endDate)
+                .accounts({
+                    vault,
+                    locking,
+                    vaultAta,
+                    signerAta: bobAta,
+                    signer: bob.publicKey,
+                    mint: btcMint,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                })
+                .signers([bob])
+                .rpc()
+
+            throw Error("Should have thrown!")
+        } catch (error) {
+            assert.equal(
+                error.logs.at(-5),
+                "Program log: Error: insufficient funds"
             )
         }
     })
