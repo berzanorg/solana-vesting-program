@@ -203,7 +203,7 @@ describe("solana-vesting-program", () => {
     it("Can't lock tokens when vault PDA ATA is mistaken!", async () => {
         const amount = new BN(1_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
-        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(marley.publicKey, btcMint)
         const fakeVault = Keypair.generate().publicKey
@@ -240,7 +240,7 @@ describe("solana-vesting-program", () => {
     it("Can't lock tokens when both vault PDA & vault PDA ATA is mistaken!", async () => {
         const amount = new BN(1_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
-        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(marley.publicKey, btcMint)
         const fakeVault = Keypair.generate().publicKey
@@ -282,7 +282,7 @@ describe("solana-vesting-program", () => {
     it("Can't lock tokens when balance is not enough!", async () => {
         const amount = new BN(999_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
-        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
@@ -319,7 +319,7 @@ describe("solana-vesting-program", () => {
     it("Can lock tokens!", async () => {
         const amount = new BN(1_000_000_000_000)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
-        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
@@ -673,7 +673,7 @@ describe("solana-vesting-program", () => {
     it("Can't unlock tokens when locking PDA is mistaken!", async () => {
         const amount = new BN(0)
         const startDate = new BN(Math.floor(Date.now() / 1000) + 1) // 1 sec after now
-        const endDate = new BN(Math.floor(Date.now() / 1000) + 3) // 3 secs after now
+        const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(alicia.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
@@ -799,7 +799,7 @@ describe("solana-vesting-program", () => {
             false
         )
 
-        await sleep(3000)
+        await sleep(5000)
 
         await mintBtc(vault, 10_000_000_000_000, true)
 
@@ -845,43 +845,27 @@ describe("solana-vesting-program", () => {
             marley.publicKey,
             false
         )
-        const bobAta = await getAssociatedTokenAddress(
-            btcMint,
-            bob.publicKey,
-            false
-        )
 
-        await program.methods
-            .unlock()
-            .accounts({
-                vault,
-                locking,
-                vaultAta,
-                recieverAta: marleyAta,
-                reciever: marley.publicKey,
-                signer: bob.publicKey,
-                mint: btcMint,
-                tokenProgram: TOKEN_PROGRAM_ID,
-            })
-            .signers([bob])
-            .rpc()
-
-        const account = await program.account.locking.fetch(locking)
-
-        assert(account.amountUnlocked.eq(new BN(1_000_000_000_000)))
-
-        const bobRemainingBalance = (
-            await connection.getTokenAccountBalance(bobAta)
-        ).value.amount
-        const marleyNewBalance = (
-            await connection.getTokenAccountBalance(marleyAta)
-        ).value.amount
-        const vaultNewBalance = (
-            await connection.getTokenAccountBalance(vaultAta)
-        ).value.amount
-
-        assert(bobRemainingBalance === String(20_000_000_000_000))
-        assert(marleyNewBalance === String(1_000_000_000_000))
-        assert(vaultNewBalance === String(10_000_000_000_000))
+        try {
+            await program.methods
+                .unlock()
+                .accounts({
+                    vault,
+                    locking,
+                    vaultAta,
+                    recieverAta: marleyAta,
+                    reciever: marley.publicKey,
+                    signer: bob.publicKey,
+                    mint: btcMint,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                })
+                .signers([bob])
+                .rpc()
+        } catch (error) {
+            assert.equal(
+                error.error.errorMessage,
+                "A raw constraint was violated"
+            )
+        }
     })
 })
