@@ -20,21 +20,12 @@ pub mod solana_vesting_program {
         end_date: u64,
     ) -> Result<()> {
         let locking = &mut ctx.accounts.locking;
-        let vault = &ctx.accounts.vault;
         let mint = &ctx.accounts.mint;
         let signer = &ctx.accounts.signer;
         let vault_ata = &ctx.accounts.vault_ata;
         let signer_ata = &ctx.accounts.signer_ata;
         let token_program = &ctx.accounts.token_program;
 
-        require!(
-            vault_ata.owner == vault.key(),
-            CustomError::MistakenVaultAtaOwner
-        );
-        require!(
-            vault_ata.mint == mint.key(),
-            CustomError::MistakenVaultAtaMint
-        );
         require!(end_date > start_date, CustomError::EndBeforeStart);
 
         let transfer = Transfer {
@@ -58,21 +49,9 @@ pub mod solana_vesting_program {
     pub fn unlock(ctx: Context<Unlock>) -> Result<()> {
         let locking = &mut ctx.accounts.locking;
         let vault = &ctx.accounts.vault;
-        let mint = &ctx.accounts.mint;
-        let reciever = &ctx.accounts.reciever;
         let vault_ata = &ctx.accounts.vault_ata;
         let reciever_ata = &ctx.accounts.reciever_ata;
         let token_program = &ctx.accounts.token_program;
-
-        require!(
-            reciever_ata.owner == reciever.key(),
-            CustomError::MistakenRecieverAtaOwner
-        );
-        require!(
-            reciever_ata.mint == mint.key(),
-            CustomError::MistakenRecieverAtaMint
-        );
-
 
         let now: u64 = Clock::get().unwrap().unix_timestamp.try_into().unwrap();
 
@@ -113,24 +92,24 @@ pub struct Lock<'info> {
         init_if_needed,
         seeds=[b"vault"],
         bump,
-        payer = signer, 
+        payer = signer,
         space = Vault::INIT_SPACE + 8,
     )]
     pub vault: Account<'info, Vault>,
 
     #[account(
         init_if_needed,
-        associated_token::mint = mint, 
+        associated_token::mint = mint,
         associated_token::authority = vault,
-        payer = signer, 
+        payer = signer,
     )]
     pub vault_ata: Account<'info, TokenAccount>,
 
     #[account(
         init,
-        seeds=[b"locking", reciever.as_ref(), mint.key().as_ref()],
+        seeds=[b"locking", reciever.key().as_ref(), mint.key().as_ref()],
         bump,
-        payer = signer, 
+        payer = signer,
         space = Locking::INIT_SPACE + 8,
     )]
     pub locking: Account<'info, Locking>,
@@ -138,7 +117,7 @@ pub struct Lock<'info> {
     #[account(
         mut,
         constraint = signer_ata.owner.key() == signer.key(),
-        constraint = signer_ata.mint == mint.key(),
+        constraint = signer_ata.mint.key() == mint.key(),
     )]
     pub signer_ata: Account<'info, TokenAccount>,
 
@@ -169,7 +148,7 @@ pub struct Unlock<'info> {
 
     #[account(
         init_if_needed,
-        associated_token::mint = mint, 
+        associated_token::mint = mint,
         associated_token::authority = reciever,
         payer = signer,
     )]
@@ -183,7 +162,7 @@ pub struct Unlock<'info> {
         seeds=[b"locking", reciever.key().as_ref(), mint.key().as_ref()],
         bump,
         constraint = locking.reciever.key() == reciever.key(),
-        constraint = locking.mint == mint.key(),
+        constraint = locking.mint.key() == mint.key(),
         constraint = locking.amount_unlocked < locking.amount,
     )]
     pub locking: Account<'info, Locking>,
@@ -214,16 +193,6 @@ pub struct Locking {
 
 #[error_code]
 pub enum CustomError {
-    #[msg("Ending date is before start date.")]
     EndBeforeStart,
-    #[msg("Vault ATA owner is mistaken.")]
-    MistakenVaultAtaOwner,
-    #[msg("Vault ATA mint is mistaken.")]
-    MistakenVaultAtaMint,
-    #[msg("Reciever ATA owner is mistaken.")]
-    MistakenRecieverAtaOwner,
-    #[msg("Reciever ATA mint is mistaken.")]
-    MistakenRecieverAtaMint,
-    #[msg("Cliff period is not passed.")]
     CliffPeriodNotPassed,
 }
