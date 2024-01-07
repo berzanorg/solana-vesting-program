@@ -184,6 +184,7 @@ pub struct Unlock<'info> {
         bump,
         constraint = locking.reciever.key() == reciever.key(),
         constraint = locking.mint == mint.key(),
+        constraint = locking.amount_unlocked < locking.amount,
     )]
     pub locking: Account<'info, Locking>,
 
