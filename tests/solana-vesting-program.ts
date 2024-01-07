@@ -193,10 +193,7 @@ describe("solana-vesting-program", () => {
 
             throw Error("Should have thrown!")
         } catch (error) {
-            assert.equal(
-                error.error.errorMessage,
-                "Ending date is before start date."
-            )
+            assert.equal(error.error.errorMessage, "EndBeforeStart")
         }
     })
 
@@ -206,10 +203,9 @@ describe("solana-vesting-program", () => {
         const endDate = new BN(Math.floor(Date.now() / 1000) + 5) // 5 secs after now
 
         const locking = getLocking(marley.publicKey, btcMint)
-        const fakeVault = Keypair.generate().publicKey
         const fakeVaultAta = await getAssociatedTokenAddress(
             btcMint,
-            fakeVault,
+            alicia.publicKey,
             false
         )
         const bobAta = await getAssociatedTokenAddress(
@@ -234,7 +230,12 @@ describe("solana-vesting-program", () => {
                 .rpc()
 
             throw Error("Should have thrown!")
-        } catch {}
+        } catch (error) {
+            assert.equal(
+                error.error.errorMessage,
+                "A token owner constraint was violated"
+            )
+        }
     })
 
     it("Can't lock tokens when both vault PDA & vault PDA ATA is mistaken!", async () => {
@@ -389,10 +390,7 @@ describe("solana-vesting-program", () => {
 
             throw Error("Should have thrown!")
         } catch (error) {
-            assert.equal(
-                error.error.errorMessage,
-                "Cliff period is not passed."
-            )
+            assert.equal(error.error.errorMessage, "CliffPeriodNotPassed")
         }
     })
 
@@ -861,6 +859,8 @@ describe("solana-vesting-program", () => {
                 })
                 .signers([bob])
                 .rpc()
+
+            throw Error("Should have thrown!")
         } catch (error) {
             assert.equal(
                 error.error.errorMessage,
