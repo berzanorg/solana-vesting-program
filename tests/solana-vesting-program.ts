@@ -38,15 +38,15 @@ describe("solana-vesting-program", () => {
         )[0]
     }
 
-    const getLocking = (reciever: PublicKey, mint: PublicKey) => {
+    const getLocking = (receiver: PublicKey, mint: PublicKey) => {
         return PublicKey.findProgramAddressSync(
-            [Buffer.from("locking"), reciever.toBuffer(), mint.toBuffer()],
+            [Buffer.from("locking"), receiver.toBuffer(), mint.toBuffer()],
             program.programId
         )[0]
     }
 
     const mintBtc = async (
-        reciever: PublicKey,
+        receiver: PublicKey,
         amount: number,
         isPda?: true
     ) => {
@@ -54,14 +54,14 @@ describe("solana-vesting-program", () => {
             connection,
             satoshi,
             btcMint,
-            reciever,
+            receiver,
             isPda
         )
         await mintTo(connection, satoshi, btcMint, address, satoshi, amount)
     }
 
     const mintEth = async (
-        reciever: PublicKey,
+        receiver: PublicKey,
         amount: number,
         isPda?: true
     ) => {
@@ -69,39 +69,39 @@ describe("solana-vesting-program", () => {
             connection,
             vitalik,
             ethMint,
-            reciever,
+            receiver,
             isPda
         )
         await mintTo(connection, vitalik, ethMint, address, vitalik, amount)
     }
 
     const getBtcAddress = async (
-        reciever: PublicKey,
+        receiver: PublicKey,
         allowOwnerOffCurve?: boolean
     ) => {
         const address = await getAssociatedTokenAddress(
             btcMint,
-            reciever,
+            receiver,
             allowOwnerOffCurve
         )
         return address
     }
 
     const getEthAddress = async (
-        reciever: PublicKey,
+        receiver: PublicKey,
         allowOwnerOffCurve?: boolean
     ) => {
         const address = await getAssociatedTokenAddress(
             ethMint,
-            reciever,
+            receiver,
             allowOwnerOffCurve
         )
         return address
     }
 
-    const getAirdrop = async (reciever: PublicKey) => {
+    const getAirdrop = async (receiver: PublicKey) => {
         const signature = await connection.requestAirdrop(
-            reciever,
+            receiver,
             3 * LAMPORTS_PER_SOL
         )
 
@@ -351,7 +351,7 @@ describe("solana-vesting-program", () => {
         assert(account.startDate.eq(startDate))
         assert(account.endDate.eq(endDate))
         assert(account.mint.equals(btcMint))
-        assert(account.reciever.equals(marley.publicKey))
+        assert(account.receiver.equals(marley.publicKey))
 
         const bobRemainingBalance = (
             await connection.getTokenAccountBalance(bobAta)
@@ -379,8 +379,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -413,8 +413,8 @@ describe("solana-vesting-program", () => {
                     vault: fakeVault,
                     locking,
                     vaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -446,8 +446,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta: fakeVaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -484,8 +484,8 @@ describe("solana-vesting-program", () => {
                     vault: fakeVault,
                     locking,
                     vaultAta: fakeVaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -522,8 +522,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta: fakeVaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -539,7 +539,7 @@ describe("solana-vesting-program", () => {
         }
     })
 
-    it("Can't unlock tokens when reciever is mistaken!", async () => {
+    it("Can't unlock tokens when receiver is mistaken!", async () => {
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
         const marleyAta = await getAssociatedTokenAddress(
@@ -547,7 +547,7 @@ describe("solana-vesting-program", () => {
             marley.publicKey,
             false
         )
-        const fakeReciever = alicia.publicKey
+        const fakereceiver = alicia.publicKey
         try {
             await program.methods
                 .unlock()
@@ -555,8 +555,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: marleyAta,
-                    reciever: fakeReciever,
+                    receiverAta: marleyAta,
+                    receiver: fakereceiver,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -568,10 +568,10 @@ describe("solana-vesting-program", () => {
         } catch {}
     })
 
-    it("Can't unlock tokens when reciever ATA is mistaken!", async () => {
+    it("Can't unlock tokens when receiver ATA is mistaken!", async () => {
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
-        const fakeRecieverAta = await getAssociatedTokenAddress(
+        const fakereceiverAta = await getAssociatedTokenAddress(
             btcMint,
             alicia.publicKey,
             false
@@ -583,8 +583,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: fakeRecieverAta,
-                    reciever: marley.publicKey,
+                    receiverAta: fakereceiverAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -601,13 +601,13 @@ describe("solana-vesting-program", () => {
         }
     })
 
-    it("Can't unlock tokens when both reciever & reciever ATA is mistaken!", async () => {
+    it("Can't unlock tokens when both receiver & receiver ATA is mistaken!", async () => {
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
-        const fakeReciever = alicia.publicKey
-        const fakeRecieverAta = await getAssociatedTokenAddress(
+        const fakereceiver = alicia.publicKey
+        const fakereceiverAta = await getAssociatedTokenAddress(
             btcMint,
-            fakeReciever,
+            fakereceiver,
             false
         )
         try {
@@ -617,8 +617,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: fakeRecieverAta,
-                    reciever: fakeReciever,
+                    receiverAta: fakereceiverAta,
+                    receiver: fakereceiver,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -635,10 +635,10 @@ describe("solana-vesting-program", () => {
         }
     })
 
-    it("Can't unlock tokens when reciever & reciever ATA don't match!", async () => {
+    it("Can't unlock tokens when receiver & receiver ATA don't match!", async () => {
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
-        const fakeRecieverAta = await getAssociatedTokenAddress(
+        const fakereceiverAta = await getAssociatedTokenAddress(
             btcMint,
             alicia.publicKey,
             false
@@ -650,8 +650,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: fakeRecieverAta,
-                    reciever: marley.publicKey,
+                    receiverAta: fakereceiverAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -707,8 +707,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -728,7 +728,7 @@ describe("solana-vesting-program", () => {
     it("Can't unlock tokens when mint is mistaken!", async () => {
         const locking = getLocking(marley.publicKey, btcMint)
         const vaultAta = await getAssociatedTokenAddress(btcMint, vault, true)
-        const fakeRecieverAta = await getAssociatedTokenAddress(
+        const fakereceiverAta = await getAssociatedTokenAddress(
             btcMint,
             alicia.publicKey,
             false
@@ -740,8 +740,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: fakeRecieverAta,
-                    reciever: marley.publicKey,
+                    receiverAta: fakereceiverAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: ethMint,
                     tokenProgram: TOKEN_PROGRAM_ID,
@@ -773,8 +773,8 @@ describe("solana-vesting-program", () => {
                 vault,
                 locking,
                 vaultAta,
-                recieverAta: marleyAta,
-                reciever: marley.publicKey,
+                receiverAta: marleyAta,
+                receiver: marley.publicKey,
                 signer: bob.publicKey,
                 mint: btcMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
@@ -807,8 +807,8 @@ describe("solana-vesting-program", () => {
                 vault,
                 locking,
                 vaultAta,
-                recieverAta: marleyAta,
-                reciever: marley.publicKey,
+                receiverAta: marleyAta,
+                receiver: marley.publicKey,
                 signer: bob.publicKey,
                 mint: btcMint,
                 tokenProgram: TOKEN_PROGRAM_ID,
@@ -851,8 +851,8 @@ describe("solana-vesting-program", () => {
                     vault,
                     locking,
                     vaultAta,
-                    recieverAta: marleyAta,
-                    reciever: marley.publicKey,
+                    receiverAta: marleyAta,
+                    receiver: marley.publicKey,
                     signer: bob.publicKey,
                     mint: btcMint,
                     tokenProgram: TOKEN_PROGRAM_ID,

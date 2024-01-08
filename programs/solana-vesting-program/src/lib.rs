@@ -14,7 +14,7 @@ pub mod solana_vesting_program {
 
     pub fn lock(
         ctx: Context<Lock>,
-        reciever: Pubkey,
+        receiver: Pubkey,
         amount: u64,
         start_date: u64,
         end_date: u64,
@@ -37,7 +37,7 @@ pub mod solana_vesting_program {
         token::transfer(token_transfer_context, amount)?;
 
         locking.mint = mint.key();
-        locking.reciever = reciever;
+        locking.receiver = receiver;
         locking.amount = amount;
         locking.amount_unlocked = 0;
         locking.start_date = start_date;
@@ -50,7 +50,7 @@ pub mod solana_vesting_program {
         let locking = &mut ctx.accounts.locking;
         let vault = &ctx.accounts.vault;
         let vault_ata = &ctx.accounts.vault_ata;
-        let reciever_ata = &ctx.accounts.reciever_ata;
+        let receiver_ata = &ctx.accounts.receiver_ata;
         let token_program = &ctx.accounts.token_program;
 
         let now: u64 = Clock::get().unwrap().unix_timestamp.try_into().unwrap();
@@ -70,7 +70,7 @@ pub mod solana_vesting_program {
         let signer = &[&seeds[..]];
         let transfer = Transfer {
             from: vault_ata.to_account_info(),
-            to: reciever_ata.to_account_info(),
+            to: receiver_ata.to_account_info(),
             authority: vault.to_account_info(),
         };
         let token_transfer_context =
@@ -85,7 +85,7 @@ pub mod solana_vesting_program {
 
 #[derive(Accounts)]
 #[instruction(
-    reciever: Pubkey,
+    receiver: Pubkey,
 )]
 pub struct Lock<'info> {
     #[account(
@@ -107,7 +107,7 @@ pub struct Lock<'info> {
 
     #[account(
         init,
-        seeds=[b"locking", reciever.key().as_ref(), mint.key().as_ref()],
+        seeds=[b"locking", receiver.key().as_ref(), mint.key().as_ref()],
         bump,
         payer = signer,
         space = Locking::INIT_SPACE + 8,
@@ -149,19 +149,19 @@ pub struct Unlock<'info> {
     #[account(
         init_if_needed,
         associated_token::mint = mint,
-        associated_token::authority = reciever,
+        associated_token::authority = receiver,
         payer = signer,
     )]
-    pub reciever_ata: Account<'info, TokenAccount>,
+    pub receiver_ata: Account<'info, TokenAccount>,
 
     /// CHECK: Just a public key of a Solana account.
-    pub reciever: AccountInfo<'info>,
+    pub receiver: AccountInfo<'info>,
 
     #[account(
         mut,
-        seeds=[b"locking", reciever.key().as_ref(), mint.key().as_ref()],
+        seeds=[b"locking", receiver.key().as_ref(), mint.key().as_ref()],
         bump,
-        constraint = locking.reciever.key() == reciever.key(),
+        constraint = locking.receiver.key() == receiver.key(),
         constraint = locking.mint.key() == mint.key(),
         constraint = locking.amount_unlocked < locking.amount,
     )]
@@ -184,7 +184,7 @@ pub struct Vault {}
 #[account]
 pub struct Locking {
     mint: Pubkey,         // mint address of tokens locked
-    reciever: Pubkey,     // reciever of locked tokens
+    receiver: Pubkey,     // receiver of locked tokens
     amount: u64,          // amount of tokens locked
     amount_unlocked: u64, // amount of tokens already unlocked
     start_date: u64,      // starting date as unix timestamp in seconds
